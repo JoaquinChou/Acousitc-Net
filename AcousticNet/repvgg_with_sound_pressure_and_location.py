@@ -15,7 +15,7 @@ parser.add_argument('--train_image_dir', dest='train_image_dir',
                     default='/home2/zgx/data/sound_sources/stft/train/', type=str)
 parser.add_argument('--data_dir', dest='data_dir',
                     help='The directory used to train the models',
-                    default='/home2/zgx/data/single_sound_source_10000/', type=str)
+                    default='/home2/zgx/data/sound_sources/single_sound_source_10000/', type=str)
 parser.add_argument('--val_image_dir', dest='val_image_dir',
                     help='The directory used to evaluate the models',
                     default='/home2/zgx/data/sound_sources/stft/val/', type=str)
@@ -27,7 +27,7 @@ parser.add_argument('--model_dir', dest='model_dir',
 # /home2/zgx/data/repvgg_single_sound_source_with_sound_pressure_models/
 parser.add_argument('--start_epoch', default=1, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('--epochs', default=300, type=int, metavar='N',
+parser.add_argument('--epochs', default=150, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--bs', default=8, type=int, help='Batch size for dataloader')
 parser.add_argument('--lr', '--learning-rate', default=0.01, metavar='LR', help='initial learning rate')
@@ -37,6 +37,9 @@ parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
 
 args = parser.parse_args()
 
+args.model_dir = args.model_dir + '{}/'.format(time.strftime('%m-%d-%H-%M',time.localtime(time.time())))
+if not os.path.exists(args.model_dir):
+        os.makedirs(args.model_dir)
 wandb.init(
     project='sound_source_location',
     entity='joaquin_chou',
@@ -47,7 +50,7 @@ wandb.init(
 )
 
 # 选定显卡
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # torch.distributed.init_process_group(backend='nccl', init_method='tcp://localhost:23456', rank=0, world_size=1)
 # torch.cuda.set_device(1)
 
@@ -88,7 +91,7 @@ lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
 #                                                           eps=1e-08)
 # 保存距离
 # coding=UTF-8
-filename = '/home2/zgx/data/AcousticNet_models/distance_val_repVGG_B0.txt'
+filename = args.model_dir + 'distance_val_repVGG_B0.txt'
 # 定义训练过程
 print('===> Start Epoch {} End Epoch {}'.format(args.start_epoch, args.epochs + 1))
 
@@ -98,7 +101,7 @@ for epoch in range(args.start_epoch, args.epochs + 1):
     epoch_loss = 0.
     # 启动BN和dropout
     model.train()
-    # location,
+
     for batch_idx, (stft_image, raw_sound_data, location, pressure) in enumerate(train_dataloader):
         input_var = stft_image.cuda()
         location_var = torch.tensor(location, dtype=torch.float32).cuda()
@@ -113,7 +116,7 @@ for epoch in range(args.start_epoch, args.epochs + 1):
         # print("+++++++++++++++++", output_location.shape)
         output_pressure = model(input_var, raw_sound_data)[1]
         # print("__________3", output_pressure.shape)
-        l2 = torch.mean((output_location - location_var) ** 2) * 10
+        l2 = torch.mean((output_location - location_var) ** 2) * 100
         # l1 = F.smooth_l1_loss(output_pressure, pressure_var, reduction="mean")
         l1 = criterion_l1(output_pressure, pressure_var)
         batch_loss = l1 + l2
@@ -171,7 +174,7 @@ for epoch in range(args.start_epoch, args.epochs + 1):
                 val_output_pressure = model(val_input_var, val_raw_sound_data)[1]
                 # val_l1 = F.smooth_l1_loss(val_output_pressure, val_pressure_var, reduction="mean")
                 val_l1 = criterion_l1(val_output_location, val_location_var)
-                val_l2 = torch.mean((val_output_location - val_location_var) ** 2) * 10
+                val_l2 = torch.mean((val_output_location - val_location_var) ** 2) * 100
                 val_batch_loss = val_l1 + val_l2
 
                 # l1_loss = F.smooth_l1_loss(val_output_pressure, val_pressure_var, reduction="mean")
@@ -214,6 +217,6 @@ for epoch in range(args.start_epoch, args.epochs + 1):
                 'EPOCH{}___location_rmse:{:4f}___pressure_rmse:{:4f}\n'.format(epoch, location_rmse, pressure_rmse))
         wandb.log({"val_loss": total_val_loss / (batch_idx + 1), "epoch": epoch})
 
-    if (epoch % 50 == 0) or (epoch == args.epochs + 1):
+    if (epoch % 10 == 0) or (epoch == args.epochs + 1):
         torch.save(model.state_dict(),
-                   args.model_dir + 'single_sound_source_repVGG_B0_pressure_and_location' + str(epoch) + '.pth')
+                   args.model_dir + 'single_sound_source_repVGG_B0_pressure_and_location_' + str(epoch) + '.pth')

@@ -16,22 +16,22 @@ parser.add_argument('--test_image_dir', dest='test_image_dir',
                     default='/home2/zgx/data/sound_sources/stft/test/', type=str)
 parser.add_argument('--data_dir', dest='data_dir',
                     help='The directory used to test the models',
-                    default='/home2/zgx/data/single_sound_source_10000/', type=str)
+                    default='/home2/zgx/data/sound_sources/single_sound_source_10000/', type=str)
 parser.add_argument('--result_dir',
-                    default='/home2/zgx/data/sound_sources/test_RepVGG_B0_with_location_and_pressure_modified_full_connection_results/',
+                    default='/home2/zgx/data/sound_sources/test_deploy_RepVGG_B0_alpha_10/',
                     type=str, help='Directory for results')
 
 parser.add_argument('--mode', metavar='MODE', default='train', choices=['train', 'deploy'], help='train or deploy')
 parser.add_argument('--weights', dest='weights',
                     help='Path to weights',
-                    default='/home2/zgx/data/AcousticNet/AcousticNet_models/single_sound_source_repVGG_A1_pressure_and_location140.pth',
+                    default='/home2/zgx/data/AcousticNet/AcousticNet_models/08-15-13-09/single_sound_source_repVGG_B0_pressure_and_location_140.pth',
                     type=str)
-# parser.add_argument('--convert_weights', dest='convert_weights',
-#                     help='Path to convert_weights',
-#                     default='/home2/zgx/data/repvgg_single_sound_source_models/convert_models/convert_single_sound_source_epoch_200.pth',
-#                     type=str)
-parser.add_argument('--gpus', default='1', type=str, help='CUDA_VISIBLE_DEVICES')
-parser.add_argument('--bs', default=32, type=int, help='Batch size for dataloader')
+parser.add_argument('--convert_weights', dest='convert_weights',
+                    help='Path to convert_weights',
+                    default='/home2/zgx/data/AcousticNet/AcousticNet_models/alpha_10/convert_single_sound_source_repVGG_B0_pressure_and_location_140.pth',
+                    type=str)
+parser.add_argument('--gpus', default='3', type=str, help='CUDA_VISIBLE_DEVICES')
+parser.add_argument('--bs', default=1, type=int, help='Batch size for testloader')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='RepVGG-B0')
 
 args = parser.parse_args()
@@ -42,8 +42,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
 # 加载模型
 repvgg_build_func = get_RepVGG_func_by_name(args.arch)
 model = repvgg_build_func(deploy=args.mode == 'deploy')
-# load_checkpoint(model, args.convert_weights)
-load_checkpoint(model, args.weights)
+if args.mode == 'train':
+    load_checkpoint(model, args.weights)
+elif args.mode == 'deploy':
+    load_checkpoint(model, args.convert_weights)
 model.cuda()
 
 # 加载声源数据
@@ -60,11 +62,12 @@ location_mape = []
 pressure_mape = []
 
 # 保存距离
-# coding=UTF-8
-filename = '/home2/zgx/data/sound_sources/test_RepVGG_B0_with_location_and_pressure_modified_full_connection_results/distance.txt'
+if not os.path.exists(args.result_dir):
+        os.makedirs(args.result_dir)
+filename = args.result_dir + 'distance.txt'
 total_test_loss = 0.
+time_count = []
 model.eval()
-epoch_start_time = time.time()
 with torch.no_grad():
     for i, (stft_image, test_raw_sound_data, test_location, test_pressure) in enumerate(tqdm(test_loader), 0):
         test_input_var = stft_image.cuda()
@@ -74,6 +77,7 @@ with torch.no_grad():
         test_raw_sound_data = test_raw_sound_data.cuda()
 
         # 计算输出
+        start_time = time.time()
         test_output_location = model(test_input_var, test_raw_sound_data)[0]
         test_output_pressure = model(test_input_var, test_raw_sound_data)[1]
 
@@ -90,6 +94,9 @@ with torch.no_grad():
         pressure_mae.append(np.linalg.norm(np_output_pressure - np_target_pressure, ord=1))
         pressure_mape.append(np.linalg.norm(np_output_pressure - np_target_pressure, ord=1) / np_target_pressure[0][0])
 
+        # 计算测试时间
+        torch.cuda.synchronize()
+        time_count.append(time.time() - start_time)
         # distance = np.linalg.norm(np_target_location - np_output_location) + np.linalg.norm(
         #     np_output_pressure - np_target_pressure)
         # distance = np.around(distance, decimals=2)
@@ -131,7 +138,7 @@ with torch.no_grad():
                 np_target_location - np_output_location), np.linalg.norm(
                 np_output_pressure - np_target_pressure, ord=1)))
 
-    print("******************", time.time() - epoch_start_time)
+    print("******************", np.sum(time_count))
     with open(filename, 'a') as file_object:
         file_object.write(
             '1000_test_location_mde:{:2f}___pressure_mae:{:2f}\n'.format(np.mean(location_mde),
