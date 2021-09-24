@@ -18,7 +18,7 @@ An Acoustic-Net is proposed to locate and quantify the acoustic source without r
 
   The Beamforming Dataset can be downloaded from the following link:
 
-   https://drive.google.com/file/d/1wPeOIcgcrq52-LQXwKE1-VQCMUrIBZuw/view?usp=sharing .
+   https://drive.google.com/file/d/1wPeOIcgcrq52-LQXwKE1-VQCMUrIBZuw/view?usp=sharing.
 
   This dataset contains 4200 sound source samples with 2400 points for training, 800 points for validation and 1000 points for testing.  
   
@@ -28,7 +28,7 @@ An Acoustic-Net is proposed to locate and quantify the acoustic source without r
 
   To run our tasks,
 
-  1. You need to add  the train, val, test set (remove their folders) into a new folder named "`data_dir`". Then, you can get 2400 h5 files about acoustic sound data collected by 56 microphones. 
+  1. You need to add  the train, val, test set (remove their folders) into a new folder named "`data_dir`". Then, you can get 4200 h5 files about acoustic sound data collected by 56 microphones. 
 
   2. Take the point `"x_0.00_y_-0.06_rms_0.69_sources.h5"` for an example. You can run the `./DET/stft.m` to change the original sound data into the 56 grey images, and save the 56 images in the folder named `"x_0.00_y_-0.06_rms_0.69_sources.h5"`. 
   3. To be able to use our dataloader (`./dataset/dataset.py`);
@@ -49,7 +49,7 @@ The parameters such as `"epoch, batchsize and train_dir" ` you can add them in t
 
 
 
-## Convert Model
+## Converted Model
 
 After training, you can convert the model  by running:
 
@@ -68,7 +68,7 @@ We provide pre-trained model for the Acoustic-Net architecture. You can download
 
 - Original Model
 
-if you don't want to convert the model ,you can use the following codes to test your model.
+if you don't want to convert the training model, you can use the following codes to test your model.
 
 ```shell
 python test_sound_source_pressure_and_location.py --data_dir data_path \
@@ -81,7 +81,7 @@ python test_sound_source_pressure_and_location.py --data_dir data_path \
 
 - Converted model
 
-if you finish converting the model ,you can use the following codes to test your model.
+if you finish converting the model, you can use the following codes to test your model.
 
 ```shell
 python test_sound_source_pressure_and_location.py --data_dir data_path \
