@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 from networks.repvgg_with_sound_pressure_net import get_RepVGG_func_by_name
 from dataset.dataset import StftDataset
-from utils import load_checkpoint
+from utils.tool import load_checkpoint
 import time
 
 parser = argparse.ArgumentParser(description='PyTorch RepVGG Test')
