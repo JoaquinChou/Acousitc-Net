@@ -4,7 +4,7 @@ import math
 import h5py
 import numpy as np
 from torch.utils.data import Dataset
-from utils import load_img
+from utils.image_utils import load_img
 
 # ignore warnings
 warnings.filterwarnings("ignore")
