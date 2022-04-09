@@ -2,10 +2,28 @@ import torch.nn as nn
 import numpy as np
 import torch
 import copy
-from utils import SEBlock
+import torch.nn.functional as F
+
+# https://openaccess.thecvf.com/content_cvpr_2018/html/Hu_Squeeze-and-Excitation_Networks_CVPR_2018_paper.html
+class SEBlock(nn.Module):
+
+    def __init__(self, input_channels, internal_neurons):
+        super(SEBlock, self).__init__()
+        self.down = nn.Conv2d(in_channels=input_channels, out_channels=internal_neurons, kernel_size=1, stride=1, bias=True)
+        self.up = nn.Conv2d(in_channels=internal_neurons, out_channels=input_channels, kernel_size=1, stride=1, bias=True)
+        self.input_channels = input_channels
+
+    def forward(self, inputs):
+        x = F.avg_pool2d(inputs, kernel_size=inputs.size(3))
+        x = self.down(x)
+        x = F.relu(x)
+        x = self.up(x)
+        x = torch.sigmoid(x)
+        x = x.view(-1, self.input_channels, 1, 1)
+        return inputs * x
 
 
-# 定义卷积和BN操作
+# define conv and bn
 def conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups=1):
     result = nn.Sequential()
     result.add_module('conv', nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
@@ -15,7 +33,7 @@ def conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups=1):
     return result
 
 
-# 定义RepVGG的Block
+# define RepVGG Block
 class RepVGGBlock(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size,
@@ -25,7 +43,6 @@ class RepVGGBlock(nn.Module):
         self.groups = groups
         self.in_channels = in_channels
 
-        # 断言用于判断一个表达式的真假
         assert kernel_size == 3
         assert padding == 1
 
@@ -54,7 +71,6 @@ class RepVGGBlock(nn.Module):
             print('RepVGG Block, identity = ', self.rbr_identity)
 
     def forward(self, inputs):
-        # print("#########################################")
         if hasattr(self, 'rbr_reparam'):
             return self.nonlinearity(self.se(self.rbr_reparam(inputs)))
 
@@ -75,14 +91,13 @@ class RepVGGBlock(nn.Module):
         kernelid, biasid = self._fuse_bn_tensor(self.rbr_identity)
         return kernel3x3 + self._pad_1x1_to_3x3_tensor(kernel1x1) + kernelid, bias3x3 + bias1x1 + biasid
 
-    # 1×1的卷积核padding一圈的0
     def _pad_1x1_to_3x3_tensor(self, kernel1x1):
         if kernel1x1 is None:
             return 0
         else:
             return torch.nn.functional.pad(kernel1x1, [1, 1, 1, 1])
 
-    # 多分支融合：卷积层和BN层融合
+    # multi_branch_confusion: confusion of conv and BN
     def _fuse_bn_tensor(self, branch):
         if branch is None:
             return 0, 0
@@ -112,7 +127,6 @@ class RepVGGBlock(nn.Module):
         return kernel * t, beta - running_mean * gamma / std
 
     def switch_to_deploy(self):
-        # print("@@@@@@@@@@@@@@@@@@@@@@@@@@")
         if hasattr(self, 'rbr_reparam'):
             return
         kernel, bias = self.get_equivalent_kernel_bias()

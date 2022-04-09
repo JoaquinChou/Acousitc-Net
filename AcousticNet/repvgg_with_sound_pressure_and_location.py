@@ -1,7 +1,5 @@
 import argparse
-import wandb
 import torch
-import torch.nn.functional as F
 import numpy as np
 import os
 import time
@@ -40,29 +38,15 @@ args = parser.parse_args()
 args.model_dir = args.model_dir + '{}/'.format(time.strftime('%m-%d-%H-%M',time.localtime(time.time())))
 if not os.path.exists(args.model_dir):
         os.makedirs(args.model_dir)
-wandb.init(
-    project='sound_source_location',
-    entity='joaquin_chou',
-    name="repVGG_B0_pressure_and_location" + "-epoch" + str(
-        args.epochs) + "-lr" + str(
-        args.lr),
-    config=args
-)
 
-# 选定显卡
+# choose DEVICES
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-# torch.distributed.init_process_group(backend='nccl', init_method='tcp://localhost:23456', rank=0, world_size=1)
-# torch.cuda.set_device(1)
 
-# 加载模型
+
 RepVGG = get_RepVGG_func_by_name(args.arch)
 model = RepVGG()
-wandb.watch(model)
-# model = nn.DataParallel(model)
 model.cuda()
-# model = nn.parallel.DistributedDataParallel(model)
 
-# 加载声源数据
 train_dataloader = torch.utils.data.DataLoader(
     StftDataset(args.data_dir, args.train_image_dir),
     batch_size=args.bs, shuffle=True,
@@ -73,33 +57,19 @@ val_dataloader = torch.utils.data.DataLoader(
     batch_size=args.bs, shuffle=True,
     num_workers=8, pin_memory=False)
 
-# 定义loss函数
 criterion_l1 = torch.nn.L1Loss(reduction="mean")
-
-# 定义优化器
-# optimizer = torch.optim.SGD(model.parameters(), args.lr,
-#                             momentum=args.momentum,
-#                             weight_decay=args.weight_decay)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
-
-# 定义学习率策略
-# lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=0, last_epoch=-1)
 lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                     milestones=[10, 50, 100], gamma=0.1, last_epoch=- 1)
-# lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=4, verbose=True,
-#                                                           threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0,
-#                                                           eps=1e-08)
-# 保存距离
+
 # coding=UTF-8
 filename = args.model_dir + 'distance_val_repVGG_B0.txt'
-# 定义训练过程
 print('===> Start Epoch {} End Epoch {}'.format(args.start_epoch, args.epochs + 1))
 
 for epoch in range(args.start_epoch, args.epochs + 1):
 
     epoch_start_time = time.time()
     epoch_loss = 0.
-    # 启动BN和dropout
     model.train()
 
     for batch_idx, (stft_image, raw_sound_data, location, pressure) in enumerate(train_dataloader):
@@ -108,16 +78,9 @@ for epoch in range(args.start_epoch, args.epochs + 1):
         raw_sound_data = raw_sound_data.cuda()
         pressure_var = torch.tensor(pressure, dtype=torch.float32).cuda()
 
-        # print("__________1", raw_sound_data.shape)
-        # print("+++++++", location_var.shape)
-        # print("+++++++2", pressure_var.shape)
-        # 计算输出
         output_location = model(input_var, raw_sound_data)[0]
-        # print("+++++++++++++++++", output_location.shape)
         output_pressure = model(input_var, raw_sound_data)[1]
-        # print("__________3", output_pressure.shape)
         l2 = torch.mean((output_location - location_var) ** 2) * 100
-        # l1 = F.smooth_l1_loss(output_pressure, pressure_var, reduction="mean")
         l1 = criterion_l1(output_pressure, pressure_var)
         batch_loss = l1 + l2
 
@@ -142,8 +105,6 @@ for epoch in range(args.start_epoch, args.epochs + 1):
                 len(train_dataloader),
                 100. * (batch_idx + 1) / len(train_dataloader),
                 l1.item(), l2.item()))
-
-    wandb.log({"train_loss": epoch_loss / (batch_idx + 1), "epoch": epoch})
 
     lr_scheduler.step()
     print("------------------------------------------------------------------")
@@ -172,18 +133,11 @@ for epoch in range(args.start_epoch, args.epochs + 1):
 
                 val_output_location = model(val_input_var, val_raw_sound_data)[0]
                 val_output_pressure = model(val_input_var, val_raw_sound_data)[1]
-                # val_l1 = F.smooth_l1_loss(val_output_pressure, val_pressure_var, reduction="mean")
                 val_l1 = criterion_l1(val_output_location, val_location_var)
                 val_l2 = torch.mean((val_output_location - val_location_var) ** 2) * 100
                 val_batch_loss = val_l1 + val_l2
 
-                # l1_loss = F.smooth_l1_loss(val_output_pressure, val_pressure_var, reduction="mean")
-                # l1_loss = criterion(val_output_pressure, val_pressure_var)
-                # l2_loss = torch.mean((val_output_location - val_location_var) ** 2)
-                # val_batch_loss = l1_loss
-                # + l2_lossval_
-                # kl_loss = F.kl_div(val_output_constraint.softmax(dim=-1).log(), val_output_sound.softmax(dim=-1), reduction='sum')
-                # l1_loss = F.smooth_l1_loss(val_output_pressure, val_pressure_var, reduction="mean")
+       
                 pressure_error.append(val_l1.cpu().numpy())
                 location_error.append(val_l2.cpu().numpy())
 
@@ -215,7 +169,6 @@ for epoch in range(args.start_epoch, args.epochs + 1):
         with open(filename, 'a') as file_object:
             file_object.write(
                 'EPOCH{}___location_rmse:{:4f}___pressure_rmse:{:4f}\n'.format(epoch, location_rmse, pressure_rmse))
-        wandb.log({"val_loss": total_val_loss / (batch_idx + 1), "epoch": epoch})
 
     if (epoch % 10 == 0) or (epoch == args.epochs + 1):
         torch.save(model.state_dict(),

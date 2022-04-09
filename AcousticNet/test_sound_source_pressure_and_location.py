@@ -8,7 +8,6 @@ from networks.repvgg_with_sound_pressure_net import get_RepVGG_func_by_name
 from dataset.dataset import StftDataset
 from utils import load_checkpoint
 import time
-import torch.nn.functional as F
 
 parser = argparse.ArgumentParser(description='PyTorch RepVGG Test')
 parser.add_argument('--test_image_dir', dest='test_image_dir',
@@ -36,10 +35,8 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='RepVGG-B0')
 
 args = parser.parse_args()
 
-# 选定显卡
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
 
-# 加载模型
 repvgg_build_func = get_RepVGG_func_by_name(args.arch)
 model = repvgg_build_func(deploy=args.mode == 'deploy')
 if args.mode == 'train':
@@ -48,20 +45,17 @@ elif args.mode == 'deploy':
     load_checkpoint(model, args.convert_weights)
 model.cuda()
 
-# 加载声源数据
 test_loader = torch.utils.data.DataLoader(
     StftDataset(args.data_dir, args.test_image_dir),
     batch_size=1, shuffle=True,
     num_workers=4, pin_memory=False)
 
-# 定义横纵坐标
 
 location_mde = []
 pressure_mae = []
 location_mape = []
 pressure_mape = []
 
-# 保存距离
 if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 filename = args.result_dir + 'distance.txt'
@@ -76,17 +70,14 @@ with torch.no_grad():
 
         test_raw_sound_data = test_raw_sound_data.cuda()
 
-        # 计算输出
         start_time = time.time()
         test_output_location = model(test_input_var, test_raw_sound_data)[0]
         test_output_pressure = model(test_input_var, test_raw_sound_data)[1]
 
         np_output_location = np.around(test_output_location.cpu().numpy(), decimals=2)
         np_target_location = test_location.cpu().numpy()
-        # print("!!!!!!!!5!", np_target_location)
         np_output_pressure = np.around(test_output_pressure.cpu().numpy(), decimals=2)
         np_target_pressure = test_pressure.cpu().numpy()
-        # print("!!!!!!!!6!", np_target_pressure)
 
         location_mde.append(np.linalg.norm(np_target_location - np_output_location))
         location_mape.append(np.linalg.norm(np_target_location - np_output_location) / np.sqrt(
@@ -94,23 +85,14 @@ with torch.no_grad():
         pressure_mae.append(np.linalg.norm(np_output_pressure - np_target_pressure, ord=1))
         pressure_mape.append(np.linalg.norm(np_output_pressure - np_target_pressure, ord=1) / np_target_pressure[0][0])
 
-        # 计算测试时间
         torch.cuda.synchronize()
         time_count.append(time.time() - start_time)
-        # distance = np.linalg.norm(np_target_location - np_output_location) + np.linalg.norm(
-        #     np_output_pressure - np_target_pressure)
-        # distance = np.around(distance, decimals=2)
-
-        # print("+++++++++1", np.around(distance, decimals=2))
-        # print("+++++++++2", np_output)
-        # print("+++++++++3", np_target)
 
         fig = plt.figure()
         ax = fig.gca(projection='3d')
         ax.set_xlim(-2, 2)
         ax.set_ylim(-2, 2)
         ax.set_zlim(0, 100)
-        # print("___________", np_output_pressure)
         ax.plot(np_output_location[0][0], np_output_location[0][1], np_output_pressure[0][0], 'bo', label="points")
         ax.text(np_output_location[0][0], np_output_location[0][1], np_output_pressure[0][0],
                 '({:.2f},{:.2f},{:.2f})'.format(np_output_location[0][0], np_output_location[0][1],
@@ -120,10 +102,7 @@ with torch.no_grad():
         ax.text(np_target_location[0][0], np_target_location[0][1], np_target_pressure[0][0],
                 '({:.2f},{:.2f},{:.2f})'.format(np_target_location[0][0], np_target_location[0][1],
                                                 np_target_pressure[0][0]), color='red')
-        # plt.plot(0, 0, 'ro', label="points")
         plt.savefig(args.result_dir + str(i + 1) + '.jpg')
-        # plt.show()
-
         with open(filename, 'a') as file_object:
             file_object.write(
                 '{}_real_location:x__{:4f}__y__{:4f}__real_pressure:{:4f}\n'.format(i, np_target_location[0][0],
